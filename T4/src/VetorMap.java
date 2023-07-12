@@ -16,6 +16,16 @@ public class VetorMap implements Map<Integer, Veiculo> {
     }
 
     /**
+     * Retorna o índice calculado a partir da chave usando uma função de hash.
+     *
+     * @param key a chave a ser usada no cálculo do índice.
+     * @return o índice calculado.
+     */
+    private int hash(Integer key) {
+        return key.hashCode() % table.length;
+    }
+
+    /**
      * Retorna o tamanho da coleção.
      * 
      * @return o tamanho da coleção.
@@ -44,9 +54,15 @@ public class VetorMap implements Map<Integer, Veiculo> {
      */
     @Override
     public boolean containsKey(Object key) {
-        // Realiza uma busca binária para encontrar a posição da chave no mapa.
-        int index = binarySearch((Integer) key);
-        return (index >= 0);
+        int index = hash((Integer) key);
+        Entry<Integer, Veiculo> entry = table[index];
+        while (entry != null) {
+            if (entry.getKey().equals(key)) {
+                return true;
+            }
+            entry = entry.getNext();
+        }
+        return false;
     }
 
     /**
@@ -59,8 +75,11 @@ public class VetorMap implements Map<Integer, Veiculo> {
     @Override
     public boolean containsValue(Object value) {
         for (Entry<Integer, Veiculo> entry : table) {
-            if (entry != null && entry.getValue().equals(value)) {
-                return true;
+            while (entry != null) {
+                if (entry.getValue().equals(value)) {
+                    return true;
+                }
+                entry = entry.getNext();
             }
         }
         return false;
@@ -75,8 +94,15 @@ public class VetorMap implements Map<Integer, Veiculo> {
      */
     @Override
     public Veiculo get(Object key) {
-        int index = binarySearch((Integer) key);
-        return (index >= 0) ? table[index].getValue() : null;
+        int index = hash((Integer) key);
+        Entry<Integer, Veiculo> entry = table[index];
+        while (entry != null) {
+            if (entry.getKey().equals(key)) {
+                return entry.getValue();
+            }
+            entry = entry.getNext();
+        }
+        return null;
     }
 
     /**
@@ -89,25 +115,25 @@ public class VetorMap implements Map<Integer, Veiculo> {
      */
     @Override
     public Veiculo put(Integer key, Veiculo value) {
-        if (size == 0) {
-            // Se o mapa estiver vazio, insere a entrada na primeira posição.
-            table[0] = new Entry<>(key, value);
-            size++;
-            return null;
+        int index = hash(key);
+        Entry<Integer, Veiculo> entry = table[index];
+        Entry<Integer, Veiculo> prev = null;
+        while (entry != null) {
+            if (entry.getKey().equals(key)) {
+                Veiculo oldValue = entry.getValue();
+                entry.setValue(value);
+                return oldValue;
+            }
+            prev = entry;
+            entry = entry.getNext();
         }
-
-        int index = binarySearch(key);
-
-        if (index >= 0) {
-            Veiculo oldValue = table[index].getValue();
-            table[index].setValue(value);
-            return oldValue;
+        Entry<Integer, Veiculo> newEntry = new Entry<>(key, value);
+        if (prev != null) {
+            prev.setNext(newEntry);
+        } else {
+            table[index] = newEntry;
         }
-
-        int insertIndex = -index - 1;
-        table[insertIndex] = new Entry<>(key, value); // Insere a entrada na posição correta
         size++;
-
         return null;
     }
 
@@ -120,13 +146,23 @@ public class VetorMap implements Map<Integer, Veiculo> {
      */
     @Override
     public Veiculo remove(Object key) {
-        int index = binarySearch((Integer) key);
-        if (index >= 0) {
-            Veiculo oldValue = table[index].getValue();
-            System.arraycopy(table, index + 1, table, index, size - index - 1);
-            table[size - 1] = null;
-            size--;
-            return oldValue;
+        int index = hash((Integer) key);
+        Entry<Integer, Veiculo> entry = table[index];
+        Entry<Integer, Veiculo> prev = null;
+        while (entry != null) {
+            if (entry.getKey().equals(key)) {
+                Veiculo oldValue = entry.getValue();
+                if (prev != null) {
+                    prev.setNext(entry.getNext());
+                } else {
+                    table[index] = entry.getNext();
+                }
+                entry.setNext(null);
+                size--;
+                return oldValue;
+            }
+            prev = entry;
+            entry = entry.getNext();
         }
         return null;
     }
@@ -177,51 +213,17 @@ public class VetorMap implements Map<Integer, Veiculo> {
     }
 
     /**
-     * Retorna a posição da chave especificada no vetor ordenado.
-     * 
-     * @param key a chave a ser buscada.
-     * @return a posição da chave no vetor ordenado, ou o valor negativo da posição
-     *         onde a chave deveria estar.
-     */
-    private int binarySearch(int key) {
-        int low = 0;
-        int high = size - 1;
-
-        while (low <= high) {
-            int mid = (low + high) >>> 1;
-            Entry<Integer, Veiculo> entry = table[mid];
-
-            if (entry == null) {
-                // Se encontrarmos uma entrada nula, movemos o índice 'low' para a direita
-                // para procurar em uma posição não nula.
-                low = mid + 1;
-                continue;
-            }
-
-            int midKey = entry.getKey();
-
-            if (midKey < key) {
-                low = mid + 1;
-            } else if (midKey > key) {
-                high = mid - 1;
-            } else {
-                return mid;
-            }
-        }
-
-        return -(low + 1);
-    }
-
-    /**
      * Classe interna que representa uma entrada no mapa.
      */
     private static class Entry<K, V> implements Map.Entry<K, V> {
         private K key;
         private V value;
+        private Entry<K, V> next;
 
         public Entry(K key, V value) {
             this.key = key;
             this.value = value;
+            this.next = null;
         }
 
         public K getKey() {
@@ -236,6 +238,14 @@ public class VetorMap implements Map<Integer, Veiculo> {
             V oldValue = this.value;
             this.value = value;
             return oldValue;
+        }
+
+        public Entry<K, V> getNext() {
+            return next;
+        }
+
+        public void setNext(Entry<K, V> next) {
+            this.next = next;
         }
     }
 }
